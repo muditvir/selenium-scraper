@@ -1,29 +1,31 @@
+import smtplib
+import os
+import json
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-import pandas as pd
-import time
-import os
-import smtplib
-import json
 
-url = 'https://www.youtube.com/feed/trending?bp=6gQJRkVleHBsb3Jl'
+YOUTUBE_TRENDING_URL = 'https://www.youtube.com/feed/trending'
+
+BINARY_LOCATION = os.environ['BINARY_LOCATION']
 
 
 def get_driver():
-  chrome_options = Options()
-  chrome_options.add_argument('--no-sandbox')
-  chrome_options.add_argument('--headless')
-  chrome_options.add_argument('--disable-dev-shm-usage')
-  driver = webdriver.Chrome(options=chrome_options)
+  options = Options()
+  options.binary_location = '/opt/headless-chromium'
+  options.add_argument('--headless')
+  options.add_argument('--no-sandbox')
+  options.add_argument('--single-process')
+  options.add_argument('--disable-dev-shm-usage')
+  driver = webdriver.Chrome('/opt/chromedriver', chrome_options=options)
+
   return driver
 
 
 def get_videos(driver):
-  tag = 'ytd-video-renderer'
-  driver.get(url)
-  time.sleep(2)
-  videos = driver.find_elements(By.TAG_NAME, tag)
+  VIDEO_DIV_TAG = 'ytd-video-renderer'
+  driver.get(YOUTUBE_TRENDING_URL)
+  videos = driver.find_elements(By.TAG_NAME, VIDEO_DIV_TAG)
   return videos
 
 
@@ -66,29 +68,30 @@ def send_email(body):
     Subject: {subject}
     {body}
     """
-    # server_ssl.login(SENDER_EMAIL, SENDER_PASSWORD)
-    # server_ssl.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, email_text)
-    # server_ssl.close()
+    server_ssl.login(SENDER_EMAIL, SENDER_PASSWORD)
+    server_ssl.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, email_text)
+    server_ssl.close()
     print('Mail sent')
 
   except:
     print('Something went wrong...')
 
 
-if __name__ == "__main__":
-
-  print('Creating driver')
+def lambda_handler(event, context):
   driver = get_driver()
-
-  print('Fetching trending videos')
   videos = get_videos(driver)
-  print(f'found {len(videos)} videos')
-  # print(parse_video(videos[0]))
-  videos_data = [parse_video(video) for video in videos[0:10]]
-  videos_df = pd.DataFrame(videos_data)
-  # videos_df.to_csv('data.csv')
-  print("Send the results over email")
-  body = json.dumps(videos_data, indent=2)
+
+  videos_data = [parse_video(video) for video in videos[:10]]
+  body = json.dumps(videos_data)
   send_email(body)
 
-  print('Finished.')
+  driver.close()
+  driver.quit()
+
+  response = {"statusCode": 200, "body": videos_data}
+
+  return response
+
+
+if __name__ == "__main__":
+  lambda_handler(None, None)
